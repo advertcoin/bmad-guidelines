@@ -1,0 +1,154 @@
+---
+description: BMAD Method Behavioral Guidelines, translating 7 core principles into actionable boundaries. Covering the entire lifecycle from task reception to delivery completion, specifically targeting consistency and verifiability when LLMs execute BMAD Method skills, enforcing "Test as Release" as the delivery threshold to ensure verifiable high-quality delivery.
+alwaysApply: true
+---
+
+# BMAD Method Behavioral Guidelines
+
+**Core Value**: Translate 7 principles into actionable boundaries for BMAD Method execution, ensuring consistency and verifiability when LLMs perform tasks.
+
+**Tradeoff**: Bias towards caution over speed; trivial tasks may use flexible judgment.
+
+## 1. Think First, Execute Second
+
+**Don't assume. Don't hide confusion. Show tradeoffs.**
+
+Before implementation:
+- Clearly state your assumptions. If uncertain, convert confusion into explicit questions for confirmation – guessing and executing directly is prohibited.
+- If multiple interpretations exist, present them – don't quietly choose one.
+- If a simpler approach exists, mention it. Stand by your judgment when justified.
+- If anything is unclear, stop. State what's confusing and ask.
+
+## 2. Simplicity First
+
+**Solve problems with the simplest approach. Don't do speculative work.**
+
+- Don't add features the user didn't request.
+- Don't create abstractions or generic frameworks for one-time tasks.
+- Don't add "flexibility" or "configurability" the user didn't ask for.
+- Don't add error handling or defensive logic for impossible scenarios.
+- If you wrote 200 lines (docs, code, etc.) but could reduce to 50, rewrite it.
+
+Ask yourself: "Would a professional consider this over-engineered?" If yes, simplify.
+
+## 3. Precise Modification
+
+**Only change what must be changed. Only clean up messes you create.**
+
+When editing existing artifacts:
+- Don't "improve" adjacent content, code, comments, formatting, etc.
+- Don't refactor working code.
+- Match existing style and conventions, even if you would do it differently.
+- If you notice unrelated content or code, mention it – but don't delete it (unless requested by the user).
+
+When your changes create orphaned content or code:
+- Remove content/imports/variables/functions rendered useless **by your changes**.
+- Don't remove pre-existing dead code (e.g., deprecated requirements, commented-out code) unless asked.
+
+Verification standard: Every change should be directly traceable.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Iterate until verification passes.**
+
+Convert tasks into verifiable objectives:
+- "Add validation" → "Write checkpoints for invalid document inputs, write tests for invalid code inputs, then make them pass"
+- "Fix bug" → "Write a reproducing check step for documents, then make the check pass; write a reproducing test for code, then make the test pass"
+- "Refactor X" → "Ensure tests and checks pass before and after refactoring"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → Verification: [Checkpoint]
+2. [Step] → Verification: [Checkpoint]
+3. [Step] → Verification: [Checkpoint]
+```
+
+Strong success criteria enable independent iteration. Weak criteria ("make it work") require constant clarification.
+
+## 5. Test as Release
+
+### 5.1. Testing Discipline
+
+**After code changes, run full integration tests in production-like Docker environment – this is the delivery threshold.**
+
+- Never skip the Docker step and claim "tests passed"
+- Never consider local Maven alone as complete
+- For every code change: compile → rebuild image (`--no-cache`) → full regression (not just your changes)
+- Test layers: unit tests for fast local feedback, full integration in Docker for final verification – both required
+- Full regression pass is a prerequisite for commit/merge
+
+### 5.2. Test Layers
+
+| Layer | Scope | Dependencies | Execution Environment |
+|---|------|------|---------|
+| Unit Test | Single component | None | Local Maven |
+| Integration Test (@WebMvcTest) | Web layer + Security | Mock | Local Maven |
+| Integration Test (@SpringBootTest) | Full stack + Database | Real dependencies | Docker (production-like) |
+| E2E | User scenarios | Real modules | Docker / On-demand |
+
+- Unit tests and @WebMvcTest can run locally first for fast feedback
+- Full-stack integration tests must run in Docker to be considered passed
+- Local fast feedback + Docker final verification – both required
+
+### 5.3. Standard Process (Docker Compose Mandatory)
+
+1. Start base dependencies (e.g., database, message queue, other external services – skip if already running)
+2. Build modified modules (e.g., `mvn package -pl <modules> -am`)
+3. Rebuild relevant service images without cache: `docker-compose build --no-cache <service...>`
+4. Start production-like test orchestration and run full regression: `docker-compose up`
+
+Example (replace `<...>` with actual values):
+
+```bash
+# 1. Start base dependencies (keep running after first use)
+docker-compose -f docker-compose.env.yml up -d
+
+# 2. Build modified modules
+mvn clean package -DskipTests -pl <module-list> -am
+
+# 3. Rebuild service images without cache
+docker-compose -f docker-compose.test-runner.yml build --no-cache <service-list>
+
+# 4. Run all integration tests
+docker-compose -f docker-compose.test-runner.yml up
+```
+
+| Placeholder | Description |
+|--------|------|
+| `<module-list>` | List of modified module names, comma-separated; omit `-pl` for all modules |
+| `<service-list>` | Names of services to rebuild, space-separated; omit to rebuild all services |
+
+### 5.4. Test Failure Handling
+
+- **Failures introduced by changes** → Fix immediately
+- **Pre-existing failures** → Mark and confirm unrelated
+- **Random/flaky failures** → Rerun to confirm, never accept as passing
+- **Stop at red** → Never continue with any failures
+
+**Ask yourself: "Would I confidently release this to production?"** If not, keep fixing.
+
+## 6. Quick Pre-Execution Check (5 Seconds)
+
+**Scan this before every task:**
+
+- Have I stated my assumptions or confusion? (→ Principle 1)
+- Is this the simplest viable solution? Have I avoided unnecessary abstraction? (→ Principle 2)
+- Are my changes only touching what's necessary? (→ Principle 3)
+- Are success criteria clear and automatically verifiable? (→ Principle 4)
+- Am I ready to run full regression? (→ Principle 5)
+
+## 7. Delivery Requirements
+
+**Every delivery must clearly provide:**
+
+- **Change Summary:** What was done and why.
+- **Success Criteria Verification:** Which objective was met, and how it was verified.
+- **Regression Test Results:** All passing, or list known unrelated failures with confirmation.
+
+---
+
+**Signs these guidelines are effective:**
+- Fewer unnecessary changes in diffs
+- Fewer rewrites due to over-complexity
+- Clarifying questions asked before implementation
+- Docker full regression becomes the norm
